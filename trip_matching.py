@@ -9,13 +9,14 @@ from scipy.interpolate import pchip
 
 class TripMatch:
     #initializing the command-line arguments
-    def __init__(self, filename1, filename2, window_size, interpolation_size, slicing_factor):
+    def __init__(self, filename1, filename2, window_size, interpolation_size, slicing_factor, match_threshold):
         self.start_time = time.time()
         self.filename1 = filename1
         self.filename2 = filename2
         self.window_size = int(window_size)
         self.interpolation_size = int(interpolation_size)
         self.slicing_factor = float(slicing_factor)
+        self.match_threshold = float(match_threshold)
 
     #calculating distance between two time serieses using dynamic time warping
     #returns minimum distance
@@ -102,17 +103,10 @@ class TripMatch:
                         s.append(data[i][j]['speed'])
                         sum_value += s[-1]
                         count += 1
-                #shifts all timestamps to start from zero
+                #shifts all timestamps to left so that the time series starts from zero
                 t = [x - min(t) for x in t]
                 timestamps.append(t)
                 speeds.append(s)
-
-            #the mean speed of entire dataset is calculated as first_mean
-            first_mean = sum_value / count
-            #then final_mean is the mean of the values which are greater than the first_mean
-            sum_value = sum([sum([le for le in l if le > first_mean]) for l in speeds])
-            count = sum(map(sum, [[le > first_mean for le in l] for l in speeds]))
-            final_mean = sum_value / count
 
             #gets reduced trip data by interpolating speed for fewer timestamps than the original data
             #for efficient computation, while the timestamp interval remains unchanged
@@ -126,11 +120,18 @@ class TripMatch:
                 #for device having no "accuracy" data
                 timestamps_intrpld, speeds_intrpld = self.interpolation(timestamps, speeds, self.interpolation_size)
 
+            #the mean speed of entire dataset is calculated as first_mean
+            first_mean = sum_value / count
+            #final_mean is the mean of speed values which are greater than first_mean
+            sum_value = sum([sum([le for le in l if le > first_mean]) for l in speeds])
+            count = sum(map(sum, [[le > first_mean for le in l] for l in speeds]))
+            final_mean = sum_value / count
+
         return timestamps, speeds, timestamps_intrpld, speeds_intrpld, final_mean
 
     #matches a trip of dataset A with a trip of dataset B
     #returns for every trip of A, its best match with a trip of B
-    def match_time_series_pairs(self, speeds_A, speeds_B, text):
+    def match_time_series_pairs(self, times_A, speeds_A, times_B, speeds_B, text):
         match = []
 
         #iterating over all trips of dataset A
@@ -143,15 +144,22 @@ class TripMatch:
                 #to compute distance of trip A and trip B,
                 #slicing over the timestamps of trip B
                 #as "starting point" of its time series.
+
                 #slicing_factor (a value between 0 and 1.0) determines after what percentage of trip B data
                 #we will stop slicing. Larger value of slicing_factor generates small slices of trip B,
                 #thereby results in tiny matched intervals, which may not be desirable.
-                for k in range(int(speed_B.size * self.slicing_factor)):
-                    cost = self.dtw(speed_A, speed_B[k:])
-                    if (cost < min_dtw):
-                        min_dtw = cost
-                        res = idx_B
-                        start_time = k
+
+                for k in range(int(self.slicing_factor*speed_B.size)):
+                    interval_match = min(times_B[idx_B][k:][-1], times_A[idx_A][-1]) - times_B[idx_B][k:][0]
+                    interval_A     = times_A[idx_A][-1] - times_A[idx_A][0]
+                    #match_threshold represents the minimum percentage of overlap we are
+                    #allowing between pairs to qualify it as a 'match'.
+                    if((interval_match > self.match_threshold * interval_A) and (interval_A > self.match_threshold * interval_match)):
+                        cost = self.dtw(speed_A, speed_B[k:])
+                        if (cost < min_dtw):
+                            min_dtw = cost
+                            res = idx_B
+                            start_time = k
 
             match.append([res, min_dtw, start_time, text])
 
@@ -166,6 +174,8 @@ class TripMatch:
     #plot a best match matched trip pair on the same graph
     def plot_match(self, x1, y1, x2, y2, match, idx):
         plt.title('Mobile trip #' + str(idx) + ' has a match with Obd2 trip #' + str(match[idx][0]))
+        plt.axvline(x=(x1[0] if x1[0] > x2[0] else x2[0]), color='k', lw=0.5)
+        plt.axvline(x=(x1[-1] if x1[-1] < x2[-1] else x2[-1]), color='k', lw=0.5)
         plt.plot(x1, y1, 'g', lw=1, label='mobile trip')
         plt.plot(x2, y2, 'r', lw=1, label='obd2 trip')
         plt.xlabel('time')
@@ -181,17 +191,19 @@ class TripMatch:
         timestamps_obd2, speeds_obd2, timestamps_obd2_intrpld, speeds_obd2_intrpld, avg_speed_obd2 \
             = self.data_preprocess(self.filename2)
 
-        #computing a scaling factor to convert mobile device speed unit to the OBDII device speed unit
+        #computing a scaling factor to convert mobile speed unit to the OBDII speed unit
         speed_scaling_factor = avg_speed_obd2/avg_speed_mobile
 
-        #scaling the mobile device speed for both the original data and interpolated data
+        #scaling the mobile device speed for both the original data and interpolated data to match OBDII speeds
         speeds_mobile         = [[(le*speed_scaling_factor) for le in l] for l in speeds_mobile]
         speeds_mobile_intrpld = [l*speed_scaling_factor for l in speeds_mobile_intrpld]
 
         #for every mobile trip, finding its best match with a OBDII trip
-        mobile_match = self.match_time_series_pairs(speeds_mobile_intrpld, speeds_obd2_intrpld, 'slicing_obd2')
+        mobile_match = self.match_time_series_pairs(timestamps_mobile_intrpld, speeds_mobile_intrpld,
+                                                    timestamps_obd2_intrpld, speeds_obd2_intrpld, 'slicing_obd2')
         # for every OBDII trip, finding its best match with a mobile trip
-        obd2_match   = self.match_time_series_pairs(speeds_obd2_intrpld, speeds_mobile_intrpld, 'slicing_mobile')
+        obd2_match   = self.match_time_series_pairs(timestamps_obd2_intrpld, speeds_obd2_intrpld,
+                                                    timestamps_mobile_intrpld, speeds_mobile_intrpld, 'slicing_mobile')
 
         #updating the results in mobile_match if any better match was found in obd2_match
         for i in range(len(obd2_match)):
@@ -222,5 +234,5 @@ if __name__ == "__main__":
     assert isinstance(sys.argv[1], str)
     assert isinstance(sys.argv[2], str)
 
-    obj = TripMatch(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
+    obj = TripMatch(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6])
     obj.match_trips()
