@@ -8,6 +8,7 @@ from copy import deepcopy
 from scipy.interpolate import pchip
 
 class TripMatch:
+
     #initializing the command-line arguments
     def __init__(self, filename1, filename2, window_size, interpolation_size, slicing_factor, match_threshold):
         self.start_time = time.time()
@@ -18,16 +19,19 @@ class TripMatch:
         self.slicing_factor = float(slicing_factor)
         self.match_threshold = float(match_threshold)
 
-    #calculating distance between two time serieses using dynamic time warping
-    #returns minimum distance
+    '''
+    this method calculates distance between two time serieses using dynamic time warping
+    returns minimum distance
+    '''
     def dtw(self, time_series1, time_series2):
         DTW = {}
 
         len1 = time_series1.size
         len2 = time_series2.size
-
-        #to handle the situation if the predefined window size is larger than the difference of
-        #two timeseries lengths, the searched timestamp index of the second time series may go out of range.
+        '''
+        to handle the situation if the predefined window size is larger than the difference of
+        two timeseries lengths, the searched timestamp index of the second time series may go out of range.
+        '''
         w = max(self.window_size, abs(len1 - len2))
 
         #initializing the dynamic programming table
@@ -43,20 +47,28 @@ class TripMatch:
                 DTW[(i, j)] = dist + min(DTW[(i - 1, j)], DTW[(i, j - 1)], DTW[(i - 1, j - 1)])
         return DTW[(len1-1, len2-1)]
 
-    #handing outliers by replacing the speed data points with the help of the accuracy values
-    #returns speed data with minimized effect of outliers
+    '''
+    this method handles outliers by replacing the speed data points with the help of the accuracy values
+    returns speed data with minimized effect of outliers
+    '''
     def outlier_handler(self, speeds_mobile, accuracy):
-
         speed_mobile_clean = deepcopy(speeds_mobile)
         for i in range(len(speed_mobile_clean)):
             #normalizing the accuracy data of a single trip
-            accuracy[i] = [(n - min(accuracy[i])) / (max(accuracy[i]) - min(accuracy[i])) for n in accuracy[i]]
-
-            #adjusting the amplitude of the graph modifying the speed data points based on the reading accuracy
-            #an estimate for the original speed can be either the mean of the speed values (for the first data point)
-            #or the value of previous speed data point. The difference between the speed data and estimated speed
-            #is then multiplied by the accruacy data to get the adjustment value. This value is then added to the
-            #speed data to get the final adjusted speed data
+            min_accuracy = min(accuracy[i])
+            max_accuracy = max(accuracy[i])
+            #increasing max_accuracy value when |max_accuracy-min_accuracy| is low
+            #to avoid icorrectly classifying non-outliers as outliers
+            if((max_accuracy - min_accuracy) < 50):
+                max_accuracy += 100
+            accuracy[i] = [((n - min_accuracy) / (max_accuracy - min_accuracy)) for n in accuracy[i]]
+            '''
+            Adjusting the amplitude of the graph modifying the speed data points based on the reading accuracy.
+            An estimate for the original speed can be either the mean of the speed values (for the first data point)
+            or the value of previous speed data point. The difference between the data speed and estimated speed
+            is then multiplied by the accruacy data to get the adjustment value. This value is then added to the
+            speed data to get the final adjusted speed
+            '''
             for j in range(len(speed_mobile_clean[i])):
                 #finding the adjustment distance for the first speed data point
                 if(j == 0):
@@ -68,8 +80,11 @@ class TripMatch:
                 speed_mobile_clean[i][j] = speed_mobile_clean[i][j] + adj
         return speed_mobile_clean
 
-    #interpolating the time versus speed data for a reduced timeseries
-    #returns interpolated reduced size time and speed data
+    '''
+    this method interpolates the time versus speed data for a reduced timeseries
+    returns interpolated reduced size time and speed data
+    '''
+
     def interpolation(self, times, speeds, num_points):
         times_intrpld =[]
         speeds_intrpld = []
@@ -84,8 +99,10 @@ class TripMatch:
             speeds_intrpld.append(ss)
         return times_intrpld, speeds_intrpld
 
-    #loads data and does preprocessing
-    #returns processed data
+    '''
+    this method loads data and does preprocessing
+    returns processed data
+    '''
     def data_preprocess(self, filename):
         timestamps = []
         speeds = []
@@ -107,9 +124,10 @@ class TripMatch:
                 t = [x - min(t) for x in t]
                 timestamps.append(t)
                 speeds.append(s)
-
-            #gets reduced trip data by interpolating speed for fewer timestamps than the original data
-            #for efficient computation, while the timestamp interval remains unchanged
+            '''
+            gets reduced trip data by interpolating speed for fewer timestamps than the original data
+            for efficient computation, while the timestamp interval remains unchanged
+            '''
             if('accuracy' in data[0][0]):
                 #for device having "accuracy" data, extract the accuracy value
                 accuracy = [[dict['accuracy'] for dict in d] for d in data]
@@ -119,18 +137,34 @@ class TripMatch:
             else:
                 #for device having no "accuracy" data
                 timestamps_intrpld, speeds_intrpld = self.interpolation(timestamps, speeds, self.interpolation_size)
+        return timestamps, speeds, timestamps_intrpld, speeds_intrpld
 
-            #the mean speed of entire dataset is calculated as first_mean
-            first_mean = sum_value / count
-            #final_mean is the mean of speed values which are greater than first_mean
-            sum_value = sum([sum([le for le in l if le > first_mean]) for l in speeds])
-            count = sum(map(sum, [[le > first_mean for le in l] for l in speeds]))
-            final_mean = sum_value / count
+    '''
+    this method calculates the mean of those speed values 
+    which are larger than the mean speed of a trip data
+    '''
+    def filtered_mean(self, speeds):
+        #calculating the mean of the entire speed data of a trip
+        sum_value =  sum([sum(l) for l in speeds])
+        count = sum([len(l) for l in speeds])
+        first_mean = sum_value/count
 
-        return timestamps, speeds, timestamps_intrpld, speeds_intrpld, final_mean
+        #get a new speed data filtering speed values larger than first_mean, and
+        #then calculate the mean of the new speeds
+        sum_value = sum([sum([le for le in l if le > first_mean]) for l in speeds])
+        count = sum(map(sum, [[le > first_mean for le in l] for l in speeds]))
+        return sum_value/count
 
-    #matches a trip of dataset A with a trip of dataset B
-    #returns for every trip of A, its best match with a trip of B
+    '''
+    this method returns the speed scaling factor
+    '''
+    def get_speed_scaling_factor(self, speeds_mobile, speeds_obd2):
+        return self.filtered_mean(speeds_obd2)/self.filtered_mean(speeds_mobile)
+
+    '''
+    this method matches a trip of dataset A with a trip of dataset B
+    returns for every trip of A: its best match with a trip of B
+    '''
     def match_time_series_pairs(self, times_A, speeds_A, times_B, speeds_B, text):
         match = []
 
@@ -141,26 +175,33 @@ class TripMatch:
             min_dtw = float("inf") #minimum dynamic time warping distance
             # iterating over all trips of dataset B
             for idx_B, speed_B in enumerate(speeds_B):
-                #to compute distance of trip A and trip B,
-                #slicing over the timestamps of trip B
-                #as "starting point" of its time series.
+                '''
+                to compute distance of trip A and trip B,
+                slicing over the timestamps of trip B
+                as "starting point" of its time series.
 
-                #slicing_factor (a value between 0 and 1.0) determines after what percentage of trip B data
-                #we will stop slicing. Larger value of slicing_factor generates small slices of trip B,
-                #thereby results in tiny matched intervals, which may not be desirable.
+                slicing_factor (a value between 0 and 1.0) determines after what percentage of trip B data
+                we will stop slicing. Larger value of slicing_factor generates small slices of trip B,
+                thereby results in tiny matched intervals, which may not be desirable.
+                '''
 
                 for k in range(int(self.slicing_factor*speed_B.size)):
                     interval_match = min(times_B[idx_B][k:][-1], times_A[idx_A][-1]) - times_B[idx_B][k:][0]
                     interval_A     = times_A[idx_A][-1] - times_A[idx_A][0]
-                    #match_threshold represents the minimum percentage of overlap we are
-                    #allowing between pairs to qualify it as a 'match'.
+                    '''
+                    match_threshold is the minimum percentage of overlap we are
+                    allowing between a pair of trip to qualify it as a 'match'.
+                    '''
                     if((interval_match > self.match_threshold * interval_A) and (interval_A > self.match_threshold * interval_match)):
                         cost = self.dtw(speed_A, speed_B[k:])
                         if (cost < min_dtw):
                             min_dtw = cost
                             res = idx_B
                             start_time = k
-
+            '''
+            storing the match result for a trip (index of the trip with best score, the similarity score, index of the
+            #starting timestamp of the matched trip, a text showing the order of comparison)
+            '''
             match.append([res, min_dtw, start_time, text])
 
             #when mobile data is A, OBDII data is B; so were are slicing OBDII trips
@@ -171,9 +212,12 @@ class TripMatch:
                 print('found a match for obd2 trip ' + str(idx_A))
         return match
 
-    #plot a best match matched trip pair on the same graph
+    '''
+    this method plot a best match matched trip pair on the same graph
+    '''
     def plot_match(self, x1, y1, x2, y2, match, idx):
         plt.title('Mobile trip #' + str(idx) + ' has a match with Obd2 trip #' + str(match[idx][0]))
+        #drawing two vertical black lines to indicate the matched interval
         plt.axvline(x=(x1[0] if x1[0] > x2[0] else x2[0]), color='k', lw=0.5)
         plt.axvline(x=(x1[-1] if x1[-1] < x2[-1] else x2[-1]), color='k', lw=0.5)
         plt.plot(x1, y1, 'g', lw=1, label='mobile trip')
@@ -181,18 +225,22 @@ class TripMatch:
         plt.xlabel('time')
         plt.ylabel('speed')
         plt.legend()
-        plt.savefig('plots/mobile_trip_' + str(idx) + '.png')
+        plt.savefig('new_plots/mobile_trip_' + str(idx) + '.png')
         plt.clf()
 
+    '''
+    this is the parent method which evokes all other methods
+    '''
     def match_trips(self):
         #getting the original data, interpolated data and mean speed from a data file
-        timestamps_mobile, speeds_mobile, timestamps_mobile_intrpld, speeds_mobile_intrpld, avg_speed_mobile \
+        timestamps_mobile, speeds_mobile, timestamps_mobile_intrpld, speeds_mobile_intrpld \
             = self.data_preprocess(self.filename1)
-        timestamps_obd2, speeds_obd2, timestamps_obd2_intrpld, speeds_obd2_intrpld, avg_speed_obd2 \
+        timestamps_obd2, speeds_obd2, timestamps_obd2_intrpld, speeds_obd2_intrpld \
             = self.data_preprocess(self.filename2)
 
+
         #computing a scaling factor to convert mobile speed unit to the OBDII speed unit
-        speed_scaling_factor = avg_speed_obd2/avg_speed_mobile
+        speed_scaling_factor = self.get_speed_scaling_factor(speeds_mobile, speeds_obd2)
 
         #scaling the mobile device speed for both the original data and interpolated data to match OBDII speeds
         speeds_mobile         = [[(le*speed_scaling_factor) for le in l] for l in speeds_mobile]
@@ -210,6 +258,7 @@ class TripMatch:
             if(mobile_match[obd2_match[i][0]][0] != i and mobile_match[obd2_match[i][0]][1] > obd2_match[i][1]):
                 mobile_match[obd2_match[i][0]] = [i, obd2_match[i][1], obd2_match[i][2], 'slicing_mobile']
 
+        print(mobile_match[:][0], mobile_match[:][1])
         #plotting each mobile trip and its best matched OBDII trip
         for i in range(len(mobile_match)):
             t1 = timestamps_mobile[i]
