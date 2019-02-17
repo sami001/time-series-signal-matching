@@ -1,10 +1,12 @@
-1. On terminal/command prompt, run the following command
+1. Unzip the file "root_telematics_work_sample.zip"
 
-python trip_match.py <input_file1> <input_file2> <window_size> <interpolation_size> <slicing_factor> <match_threshold>
-
-2. To reproduce the results that I obtained experimenting on the provided data sets (recommended), please run the following command:
+2. On terminal/command prompt, run the following command to reproduce my experiment result:
 
 python trip_match.py mobile_trips.json obd2_trips.json 10 50 0.5 0.3
 
 
-2. All figures for matching trip pairs will be generated in the "plots" folder which is located in the same directory as trip_match.py.
+3. To test with any data set and any parameter values, the general command is:
+
+python trip_match.py <input_file1> <input_file2> <window_size> <interpolation_size> <slicing_factor> <match_threshold>
+
+4. All figures for matching trip pairs will be generated in the "plots" folder which is located in the same directory as trip_match.py.
