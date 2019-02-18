@@ -53,6 +53,7 @@ class TripMatch:
     returns speed data with minimized effect of outliers
     '''
     def outlier_handler(self, speeds_mobile, accuracy):
+        print('Working on data outliers ...')
         speed_mobile_clean = deepcopy(speeds_mobile)
         for i in range(len(speed_mobile_clean)):
             #normalizing the accuracy data of a single trip
@@ -86,6 +87,7 @@ class TripMatch:
     returns interpolated reduced size time and speed data
     '''
     def interpolation(self, times, speeds, num_points):
+        print('Interpolating the data ...')
         times_intrpld =[]
         speeds_intrpld = []
         for i in range(len(speeds)):
@@ -104,6 +106,7 @@ class TripMatch:
     returns processed data
     '''
     def data_preprocess(self, filename):
+        print('Loading data ...')
         timestamps = []
         speeds = []
         #reads data from json file
@@ -166,6 +169,7 @@ class TripMatch:
     returns for every trip of A: its best match with a trip of B
     '''
     def match_time_series_pairs(self, times_A, speeds_A, times_B, speeds_B, text):
+        print('Finding matched trip pairs ......')
         match = []
 
         #iterating over all trips of dataset A
@@ -238,7 +242,7 @@ class TripMatch:
         timestamps_obd2, speeds_obd2, timestamps_obd2_intrpld, speeds_obd2_intrpld \
             = self.data_preprocess(self.filename2)
 
-
+        print('Calculating scaling factor ...')
         #computing a scaling factor to convert mobile speed unit to the OBDII speed unit
         speed_scaling_factor = self.get_speed_scaling_factor(speeds_mobile, speeds_obd2)
 
@@ -252,12 +256,14 @@ class TripMatch:
         # for every OBDII trip, finding its best match with a mobile trip
         obd2_match   = self.match_time_series_pairs(timestamps_obd2_intrpld, speeds_obd2_intrpld,
                                                     timestamps_mobile_intrpld, speeds_mobile_intrpld, 'slicing_mobile')
-
+        
+        print('Updating matched trip pair list ...')
         #updating the results in mobile_match if any better match was found in obd2_match
         for i in range(len(obd2_match)):
             if(mobile_match[obd2_match[i][0]][0] != i and mobile_match[obd2_match[i][0]][1] > obd2_match[i][1]):
                 mobile_match[obd2_match[i][0]] = [i, obd2_match[i][1], obd2_match[i][2], 'slicing_mobile']
-
+        
+        print('Plotting graph and generating output figures ...')
         #plotting each mobile trip and its best matched OBDII trip
         for i in range(len(mobile_match)):
             t1 = timestamps_mobile[i]
@@ -274,7 +280,7 @@ class TripMatch:
             #plot the mathing pair
             self.plot_match(t1, s1, t2, s2, mobile_match, i)
 
-        print("--- %s seconds ---" % (time.time() - self.start_time))
+        print("Completed in %s seconds !!!" % (time.time() - self.start_time))
 
 
 
