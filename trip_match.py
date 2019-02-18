@@ -169,7 +169,7 @@ class TripMatch:
     returns for every trip of A: its best match with a trip of B
     '''
     def match_time_series_pairs(self, times_A, speeds_A, times_B, speeds_B, text):
-        print('Finding matched trip pairs ......')
+        print('Finding trip match pairs ......')
         match = []
 
         #iterating over all trips of dataset A
