@@ -87,7 +87,7 @@ class TripMatch:
     returns interpolated reduced size time and speed data
     '''
     def interpolation(self, times, speeds, num_points):
-        print('Interpolating the data ...')
+
         times_intrpld =[]
         speeds_intrpld = []
         for i in range(len(speeds)):
@@ -106,7 +106,7 @@ class TripMatch:
     returns processed data
     '''
     def data_preprocess(self, filename):
-        print('Loading data ...')
+        
         timestamps = []
         speeds = []
         #reads data from json file
@@ -236,9 +236,14 @@ class TripMatch:
     this is the parent method which evokes all other methods
     '''
     def match_trips(self):
+        print('Loading Mobile data ...')
+        print('Interpolating Mobile data ...')
         #getting the clean data and clean interpolated data from the data dump
         timestamps_mobile, speeds_mobile, timestamps_mobile_intrpld, speeds_mobile_intrpld \
             = self.data_preprocess(self.filename1)
+        
+        print('Loading OBDII data ...')
+        print('Interpolating OBDII data ...')
         timestamps_obd2, speeds_obd2, timestamps_obd2_intrpld, speeds_obd2_intrpld \
             = self.data_preprocess(self.filename2)
 
