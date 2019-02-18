@@ -10,4 +10,4 @@ python trip_match.py mobile_trips.json obd2_trips.json 10 50 0.5 0.3
 
 python trip_match.py <input_file1> <input_file2> <window_size> <interpolation_size> <slicing_factor> <match_threshold>
 
-4. All figures for matching trip pairs will be generated in the "plots" folder which is located in the same directory as trip_match.py.
+4. All figures of matching trip pairs will be generated in the "plots" folder which is located in the same directory as trip_match.py.
