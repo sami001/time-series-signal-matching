@@ -1,8 +1,8 @@
-1. Unzip the file "root_telematics_work_sample-master.zip"
+1. Unzip the file "time-series-signal-matching.zip"
 
 2. On terminal/command prompt, cd to the location where you unzipped the file. Now run the following commands to reproduce my experiment results:
 
-cd root_telematics_work_sample-master
+cd time-series-signal-matching-master
 python trip_match.py mobile_trips.json obd2_trips.json 10 50 0.5 0.3
 
 
